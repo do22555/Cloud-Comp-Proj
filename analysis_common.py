@@ -1,5 +1,5 @@
 # analysis_common.py
-import os
+import os ###
 import numpy as np
 import awkward as ak
 import uproot
@@ -9,8 +9,8 @@ vector.register_awkward()
 # ATLAS Open Data
 #from atlasopenmagic import install_from_environment
 import atlasopenmagic as atom
-os.environ["ATLAS_OPENMAGIC_NO_INSTALL"] = "1"
-#install_from_environment()
+os.environ["ATLAS_OPENMAGIC_NO_INSTALL"] = "1" ### This was a nightmare to figure out:
+#install_from_environment() ### Skip atlas open magic install entirely + it improves runtime
 atom.set_release("2025e-13tev-beta")
 
 # Histogram binning
@@ -48,22 +48,23 @@ def make_hist(values):
     }
 
 
-# --------------------------------------------------------------------
-#    FILE PROCESSOR — NO hist, NO to_dict()
-# --------------------------------------------------------------------
+# -----------------------------------------------------------------------------------
+#    FILE PROCESSOR — modded dependencies to work around atlasopenmagic install
+# -----------------------------------------------------------------------------------
+# these are sent to aggregator.py
 def process_file(file_url, sample_name="Data"):
     print(f"[worker] Opening {file_url}")
 
     # ROOT file → TTree "analysis"
     tree = uproot.open(file_url + ":analysis")
 
-    # Needed branches (must exist in notebook)
+    # Needed branches (from notebook)
     branches = tree.arrays(
         ["lep_pt", "lep_eta", "lep_phi", "lep_e", "lep_type"],
         how=dict
     )
 
-    # Build awkward Momentum4D objects (not used yet, but could)
+    # Build awkward Momentum4D objects (not entirely sure if this is required, worried to delete)
     leptons = ak.zip(
         {
             "pt": branches["lep_pt"],
@@ -74,7 +75,7 @@ def process_file(file_url, sample_name="Data"):
         with_name="Momentum4D"
     )
 
-    # Need ≥ 4 leptons
+    # Need >= 4 leptons
     mask4 = ak.num(leptons) >= 4
     leptons = leptons[mask4]
 

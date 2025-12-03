@@ -6,7 +6,8 @@ from analysis_common import build_samples
 
 QUEUE = "tasks"
 
-
+# use pika to establish a queue of tasks for workers. Heaily dependent on
+# methods written in analysis_common
 def main():
     print("[producer] Building sample list…")
     samples = build_samples()
