@@ -15,8 +15,8 @@ atom.set_release("2025e-13tev-beta")
 
 # Histogram binning
 xmin = 80.0
-xmax = 200.0
-step = 2.0
+xmax = 250.0
+step = 2.5
 BINS = np.arange(xmin, xmax + step, step)
 
 
