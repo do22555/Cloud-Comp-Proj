@@ -6,12 +6,12 @@ import awkward as ak
 import uproot
 import vector
 
-vector.register_awkward()
+vector.register_awkward() # if this isn't done immediately the script explodes
 
 # ----------------------------------------------------------------------
 # ATLAS Open Data / atlasopenmagic
 # ----------------------------------------------------------------------
-# IMPORTANT: disable atlasopenmagic's environment auto-install
+# IMPORTANT: disable atlasopenmagic's environment auto-install because it's crap
 os.environ["ATLAS_OPENMAGIC_NO_INSTALL"] = "1"
 
 import atlasopenmagic as atom  # noqa: E402
@@ -92,7 +92,7 @@ BINS = np.arange(xmin, xmax + step, step)
 BIN_CENTRES = 0.5 * (BINS[:-1] + BINS[1:])
 
 # ----------------------------------------------------------------------
-# Physics variable lists (match notebook)
+# Physics variable lists (nicked from notebook)
 # ----------------------------------------------------------------------
 VARIABLES = [
     "lep_pt",
@@ -184,7 +184,7 @@ def calc_weight(weight_variables, events, lumi=LUMI):
     return total_weight
 
 
-# ----------------------------------------------------------------------
+# ------------------------------------------------------------------------
 # Histogram helper (works for weighted & unweighted)
 # ----------------------------------------------------------------------
 def make_hist(values, weights=None):
@@ -218,7 +218,7 @@ def make_hist(values, weights=None):
 
 # ----------------------------------------------------------------------
 # FILE PROCESSOR: full final-analysis logic per file
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------
 def _process_data_tree(tree):
     """Apply final-analysis cuts to a Data file, return masses & weights."""
     masses = []
