@@ -18,7 +18,6 @@ def slugify(name: str) -> str:
 
 
 def save_partial_result(result: dict):
-
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     sample = result["sample"]
@@ -29,7 +28,6 @@ def save_partial_result(result: dict):
 
     out_path = OUTPUT_DIR / f"{slug}__{h}.npz"
 
-    # --- SAVE A PURE NUMPY HISTOGRAM, NO Hist OBJECTS ---
     np.savez(
         out_path,
         edges=result["hist"]["edges"],
@@ -49,7 +47,7 @@ def on_message(ch, method, properties, body):
     file_url = message["file_url"]
     sample = message["sample"]
 
-    print(f"[worker] Processing {file_url}")
+    print(f"[worker] Processing {file_url} ({sample})")
 
     try:
         result = process_file(file_url, sample)

@@ -1,5 +1,5 @@
 # aggregator.py
-"""Load results from workers and produce a Higgs-peak plot."""
+"""Load results from workers and produce HZZ plots (3 figures)."""
 
 from pathlib import Path
 
@@ -7,22 +7,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 
-# Must match analysis_common.py
-xmin = 80.0
-xmax = 250.0
-step = 2.5 # this matches notebook - not sure if this matters really
-BINS = np.arange(xmin, xmax + step, step)
-BIN_CENTRES = 0.5 * (BINS[:-1] + BINS[1:])
-
-# ATLAS Open Data plotting colours/definitions (from notebook)
-SAMPLES = {
-    "Data": {"color": "black"},
-    r"Background $Z,t\bar{t},t\bar{t}+V,VVV$": {"color": "#6b59d3"},
-    r"Background $ZZ^{*}$": {"color": "#ff0000"},
-    r"Signal ($m_H$ = 125 GeV)": {"color": "#00cdff"},
-}
+from analysis_common import (
+    BINS,
+    BIN_CENTRES,
+    step,
+    xmin,
+    xmax,
+    LUMI,
+    SAMPLE_DEFS,
+)
 
 OUTPUT_DIR = Path("/data/output")
+
+DATA_LABEL = "Data"
+TTBAR_LABEL = r"Background $Z,t\bar{t},t\bar{t}+V,VVV$"
+SIGNAL_LABEL = r"Signal ($m_H$ = 125 GeV)"
 
 
 # ---------------------------------------------------------------------------
@@ -32,10 +31,10 @@ def load_partial_results():
     """
     Returns:
         hists[sample] = {
-            "values": array,       # bin counts (summed over all files)
-            "variances": array,    # per-bin variances (summed over all files)
+            "values": array,       # bin sums (sum w)
+            "variances": array,    # per-bin sum w^2
         }
-        events[sample] = int       # total events processed for that sample
+        events[sample] = float     # total events (sum weights or counts)
     """
 
     hists = {}
@@ -49,23 +48,21 @@ def load_partial_results():
     for path in npz_files:
         with np.load(path, allow_pickle=True) as f:
             sample = f["sample"]
-            # np.savez stored 'sample' as a 0-d array of dtype=object
             if isinstance(sample, np.ndarray):
                 sample = sample.item()
             sample = str(sample)
 
-            values = f["values"]
-            variances = f["variances"]
-            ev = int(f["events"])
+            values = f["values"].astype(float)
+            variances = f["variances"].astype(float)
+            ev = float(f["events"])
 
         if sample not in hists:
             hists[sample] = {
                 "values": np.zeros_like(values, dtype=float),
                 "variances": np.zeros_like(variances, dtype=float),
             }
-            events[sample] = 0
+            events[sample] = 0.0
 
-        # Sum histograms bin-by-bin
         hists[sample]["values"] += values
         hists[sample]["variances"] += variances
         events[sample] += ev
@@ -75,93 +72,180 @@ def load_partial_results():
 
 
 # ---------------------------------------------------------------------------
-# MAIN PLOTTING LOGIC – CLOSE TO THE NOTEBOOK
+# PLOT 1 – Example 1–style Data-only plot
 # ---------------------------------------------------------------------------
-def main():
-    hists, events = load_partial_results()
-
-    if "Data" not in hists:
-        print("[aggregator] ERROR: No 'Data' histogram found.")
+def plot_example1_data(hists):
+    if DATA_LABEL not in hists:
+        print("[aggregator] Example1: no Data histogram found.")
         return
 
-    # -------------------------------
-    # Extract data (Example 1 style)
-    # -------------------------------
-    data_y = hists["Data"]["values"]
-    # use stored variances → Poisson sigma = sqrt(N) for unweighted events
-    data_var = hists["Data"]["variances"]
-    data_err = np.sqrt(data_var)
+    data_vals = hists[DATA_LABEL]["values"]
+    data_err = np.sqrt(hists[DATA_LABEL]["variances"])
 
-    # -------------------------------
-    # Build MC stacks (if present)
-    # -------------------------------
-    mc_stack_vals = []
-    mc_stack_vars = []
-    mc_colors = []
-    mc_labels = []
-
-    signal_y = None
-    signal_color = None
-
-    for label, meta in SAMPLES.items():
-        if label == "Data":
-            continue
-
-        # Signal handled separately
-        if label.startswith("Signal"):
-            if label in hists:
-                signal_y = hists[label]["values"]
-                signal_color = meta["color"]
-            continue
-
-        # Backgrounds
-        if label in hists:
-            mc_stack_vals.append(hists[label]["values"])
-            mc_stack_vars.append(hists[label]["variances"])
-            mc_colors.append(meta["color"])
-            mc_labels.append(label)
-
-    # Stack MC values and variances (if any MC present)
-    if mc_stack_vals:
-        stacked_vals = np.zeros_like(data_y, dtype=float)
-        stacked_var = np.zeros_like(data_y, dtype=float)
-        for vals, var in zip(mc_stack_vals, mc_stack_vars):
-            stacked_vals += vals
-            stacked_var += var
-        mc_err = np.sqrt(stacked_var)
-    else:
-        stacked_vals = np.zeros_like(data_y, dtype=float)
-        mc_err = np.zeros_like(data_y, dtype=float)
-
-    # ------------------------------------------------------------------
-    # PLOT (matches notebook layout as far as possible)
-    # ------------------------------------------------------------------
     fig, ax = plt.subplots(figsize=(12, 8))
 
-    # DATA POINTS WITH ERROR BARS (like notebook Example 1)
     ax.errorbar(
         BIN_CENTRES,
-        data_y,
+        data_vals,
         yerr=data_err,
         fmt="ko",
         label="Data",
     )
 
-    # BACKGROUND STACK
-    bottom = np.zeros_like(data_y, dtype=float)
-    for y, colour, label in zip(mc_stack_vals, mc_colors, mc_labels):
+    ax.set_xlim(xmin, xmax)
+    ax.set_xlabel(r"4-lepton invariant mass $m_{4\ell}$ [GeV]", fontsize=13)
+    ax.set_ylabel(f"Events / {step:.1f} GeV", fontsize=13)
+
+    ax.xaxis.set_minor_locator(AutoMinorLocator())
+    ax.yaxis.set_minor_locator(AutoMinorLocator())
+    ax.tick_params(which="both", direction="in", top=True, right=True)
+
+    ax.set_ylim(bottom=0, top=np.max(data_vals) * 1.6)
+    ax.legend(frameon=False)
+
+    plt.tight_layout()
+    out_path = OUTPUT_DIR / "hzz_example1_data.png"
+    fig.savefig(out_path)
+    print(f"[aggregator] Example1 plot saved to {out_path}")
+
+
+# ---------------------------------------------------------------------------
+# PLOT 2 – Example 2–style ttbar/Z+... background with stat band
+# ---------------------------------------------------------------------------
+def plot_example2_ttbar(hists):
+    if TTBAR_LABEL not in hists:
+        print(f"[aggregator] Example2: no '{TTBAR_LABEL}' histogram found.")
+        return
+
+    vals = hists[TTBAR_LABEL]["values"]
+    err = np.sqrt(hists[TTBAR_LABEL]["variances"])
+    colour = SAMPLE_DEFS[TTBAR_LABEL]["color"]
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Background as a histogram (bar)
+    ax.bar(
+        BIN_CENTRES,
+        vals,
+        width=step,
+        color=colour,
+        label=TTBAR_LABEL,
+    )
+
+    # Stat uncertainty band: sqrt(sum w^2)
+    ax.bar(
+        BIN_CENTRES,
+        2 * err,
+        bottom=vals - err,
+        width=step,
+        alpha=0.5,
+        color="none",
+        hatch="////",
+        label="Stat. Unc.",
+    )
+
+    ax.set_xlim(xmin, xmax)
+    ax.set_xlabel(r"4-lepton invariant mass $m_{4\ell}$ [GeV]", fontsize=13)
+    ax.set_ylabel(f"Events / {step:.1f} GeV", fontsize=13)
+
+    ax.xaxis.set_minor_locator(AutoMinorLocator())
+    ax.yaxis.set_minor_locator(AutoMinorLocator())
+    ax.tick_params(which="both", direction="in", top=True, right=True)
+
+    ax.legend(frameon=False)
+    plt.tight_layout()
+    out_path = OUTPUT_DIR / "hzz_example2_ttbar.png"
+    fig.savefig(out_path)
+    print(f"[aggregator] Example2 plot saved to {out_path}")
+
+
+# ---------------------------------------------------------------------------
+# PLOT 3 – Final stacked Data vs MC + Signal plot
+# ---------------------------------------------------------------------------
+def plot_final_stack(hists):
+    if DATA_LABEL not in hists:
+        print("[aggregator] Final: no Data histogram found.")
+        return
+
+    # Data
+    data_vals = hists[DATA_LABEL]["values"]
+    data_err = np.sqrt(hists[DATA_LABEL]["variances"])
+
+    # Backgrounds & signal
+    mc_x = []
+    mc_colors = []
+    mc_labels = []
+    mc_vars = []
+
+    signal_vals = None
+    signal_color = None
+
+    for name, meta in SAMPLE_DEFS.items():
+        if name == DATA_LABEL:
+            continue
+
+        if name == SIGNAL_LABEL:
+            if name in hists:
+                signal_vals = hists[name]["values"]
+                signal_color = meta["color"]
+            continue
+
+        # backgrounds
+        if name in hists:
+            mc_x.append(hists[name]["values"])
+            mc_vars.append(hists[name]["variances"])
+            mc_colors.append(meta["color"])
+            mc_labels.append(name)
+
+    # Build stacked background and total MC variance
+    if mc_x:
+        stacked_vals = np.zeros_like(mc_x[0])
+        stacked_var = np.zeros_like(mc_vars[0])
+        for vals, var in zip(mc_x, mc_vars):
+            stacked_vals += vals
+            stacked_var += var
+        mc_err = np.sqrt(stacked_var)
+    else:
+        stacked_vals = np.zeros_like(data_vals)
+        mc_err = np.zeros_like(data_vals)
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # Data points
+    ax.errorbar(
+        BIN_CENTRES,
+        data_vals,
+        yerr=data_err,
+        fmt="ko",
+        label="Data",
+    )
+
+    # Background stack
+    bottom = np.zeros_like(data_vals, dtype=float)
+    for vals, colour, label in zip(mc_x, mc_colors, mc_labels):
         ax.bar(
             BIN_CENTRES,
-            y,
-            bottom=bottom,
+            vals,
             width=step,
-            label=label,
+            bottom=bottom,
             color=colour,
+            label=label,
         )
-        bottom += y
+        bottom += vals
 
-    # MC STATISTICAL UNCERTAINTY BAND
-    if mc_stack_vals:  # only draw if we actually have MC
+    # Signal on top of backgrounds
+    if signal_vals is not None:
+        ax.step(
+            BIN_CENTRES,
+            stacked_vals + signal_vals,
+            where="mid",
+            color=signal_color,
+            linewidth=2,
+            label=SIGNAL_LABEL,
+        )
+
+    # MC stat. uncertainty band
+    if mc_x:
         ax.bar(
             BIN_CENTRES,
             2 * mc_err,
@@ -170,40 +254,73 @@ def main():
             alpha=0.5,
             color="none",
             hatch="////",
-            label="MC stat. unc.",
+            label="Stat. Unc.",
         )
 
-    # SIGNAL (optional, if present)
-    if signal_y is not None:
-        ax.step(
-            BIN_CENTRES,
-            signal_y + stacked_vals,  # signal on top of backgrounds
-            where="mid",
-            color=signal_color,
-            linewidth=2,
-            label=r"Signal ($m_H=125$ GeV)",
-        )
-
-    # Aesthetics (close to the ATLAS tutorial style)
+    # Axes / labels (as in notebook final)
+    ax.set_xlim(xmin, xmax)
     ax.set_xlabel(r"4-lepton invariant mass $m_{4\ell}$ [GeV]", fontsize=13)
     ax.set_ylabel(f"Events / {step:.1f} GeV", fontsize=13)
-    ax.set_xlim(xmin, xmax)
 
+    ax.set_ylim(bottom=0, top=np.max(data_vals) * 2.0)
     ax.xaxis.set_minor_locator(AutoMinorLocator())
     ax.yaxis.set_minor_locator(AutoMinorLocator())
-    ax.tick_params(
-        which="both",
-        direction="in",
-        top=True,
-        right=True,
+    ax.tick_params(which="both", direction="in", top=True, right=True)
+
+    # ATLAS text
+    plt.text(
+        0.1,
+        0.93,
+        "ATLAS Open Data",
+        transform=ax.transAxes,
+        fontsize=16,
+    )
+    plt.text(
+        0.1,
+        0.88,
+        "for education",
+        transform=ax.transAxes,
+        fontsize=12,
+        style="italic",
+    )
+    lumi_used = f"{LUMI:.1f}"
+    plt.text(
+        0.1,
+        0.82,
+        rf"$\sqrt{{s}}$=13 TeV,$\int$L dt = {lumi_used} fb$^{{-1}}$",
+        transform=ax.transAxes,
+        fontsize=16,
+    )
+    plt.text(
+        0.1,
+        0.76,
+        r"$H \rightarrow ZZ^* \rightarrow 4\ell$",
+        transform=ax.transAxes,
+        fontsize=16,
     )
 
-    ax.legend(frameon=False)
+    ax.legend(frameon=False, fontsize=14)
     plt.tight_layout()
 
-    out_path = OUTPUT_DIR / "final_plot.png"
+    out_path = OUTPUT_DIR / "hzz_final_stack.png"
     fig.savefig(out_path)
-    print(f"[aggregator] Plot saved to {out_path}")
+    print(f"[aggregator] Final stacked plot saved to {out_path}")
+
+
+# ---------------------------------------------------------------------------
+# MAIN
+# ---------------------------------------------------------------------------
+def main():
+    hists, events = load_partial_results()
+    if not hists:
+        print("[aggregator] Nothing to plot.")
+        return
+
+    # Produce all three figures
+    plot_example1_data(hists)
+    plot_example2_ttbar(hists)
+    plot_final_stack(hists)
+
     print("[aggregator] Done.")
 
 
