@@ -7,7 +7,7 @@ from analysis_common import build_samples, SAMPLE_DEFS
 
 QUEUE = "tasks"
 
-
+# nice easy one this: just grab the files and put them in a round robin queue
 def main():
     print("[producer] Building sample list…")
     samples = build_samples()
